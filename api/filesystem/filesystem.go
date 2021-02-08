@@ -2,6 +2,8 @@ package filesystem
 
 import (
 	"bytes"
+	"encoding/json"
+	"encoding/pem"
 	"io/ioutil"
 
 	"github.com/portainer/portainer"
@@ -26,6 +28,10 @@ const (
 	ComposeStorePath = "compose"
 	// ComposeFileDefaultName represents the default name of a compose file.
 	ComposeFileDefaultName = "docker-compose.yml"
+	// PrivateKeyFile represents the name on disk of the file containing the private key.
+	PrivateKeyFile = "portainer.key"
+	// PublicKeyFile represents the name on disk of the file containing the public key.
+	PublicKeyFile = "portainer.pub"
 )
 
 // Service represents a service for managing files and directories.
@@ -42,20 +48,17 @@ func NewService(dataStorePath, fileStorePath string) (*Service, error) {
 		fileStorePath: path.Join(dataStorePath, fileStorePath),
 	}
 
-	// Checking if a mount directory exists is broken with Go on Windows.
-	// This will need to be reviewed after the issue has been fixed in Go.
-	// See: https://github.com/portainer/portainer/issues/474
-	// err := createDirectoryIfNotExist(dataStorePath, 0755)
-	// if err != nil {
-	// 	return nil, err
-	// }
-
-	err := service.createDirectoryInStoreIfNotExist(TLSStorePath)
+	err := os.MkdirAll(dataStorePath, 0755)
 	if err != nil {
 		return nil, err
 	}
 
-	err = service.createDirectoryInStoreIfNotExist(ComposeStorePath)
+	err = service.createDirectoryInStore(TLSStorePath)
+	if err != nil {
+		return nil, err
+	}
+
+	err = service.createDirectoryInStore(ComposeStorePath)
 	if err != nil {
 		return nil, err
 	}
@@ -76,14 +79,14 @@ func (service *Service) GetStackProjectPath(stackIdentifier string) string {
 
 // StoreStackFileFromString creates a subfolder in the ComposeStorePath and stores a new file using the content from a string.
 // It returns the path to the folder where the file is stored.
-func (service *Service) StoreStackFileFromString(stackIdentifier, stackFileContent string) (string, error) {
+func (service *Service) StoreStackFileFromString(stackIdentifier, fileName, stackFileContent string) (string, error) {
 	stackStorePath := path.Join(ComposeStorePath, stackIdentifier)
-	err := service.createDirectoryInStoreIfNotExist(stackStorePath)
+	err := service.createDirectoryInStore(stackStorePath)
 	if err != nil {
 		return "", err
 	}
 
-	composeFilePath := path.Join(stackStorePath, ComposeFileDefaultName)
+	composeFilePath := path.Join(stackStorePath, fileName)
 	data := []byte(stackFileContent)
 	r := bytes.NewReader(data)
 
@@ -97,14 +100,14 @@ func (service *Service) StoreStackFileFromString(stackIdentifier, stackFileConte
 
 // StoreStackFileFromReader creates a subfolder in the ComposeStorePath and stores a new file using the content from an io.Reader.
 // It returns the path to the folder where the file is stored.
-func (service *Service) StoreStackFileFromReader(stackIdentifier string, r io.Reader) (string, error) {
+func (service *Service) StoreStackFileFromReader(stackIdentifier, fileName string, r io.Reader) (string, error) {
 	stackStorePath := path.Join(ComposeStorePath, stackIdentifier)
-	err := service.createDirectoryInStoreIfNotExist(stackStorePath)
+	err := service.createDirectoryInStore(stackStorePath)
 	if err != nil {
 		return "", err
 	}
 
-	composeFilePath := path.Join(stackStorePath, ComposeFileDefaultName)
+	composeFilePath := path.Join(stackStorePath, fileName)
 
 	err = service.createFileInStore(composeFilePath, r)
 	if err != nil {
@@ -117,7 +120,7 @@ func (service *Service) StoreStackFileFromReader(stackIdentifier string, r io.Re
 // StoreTLSFile creates a folder in the TLSStorePath and stores a new file with the content from r.
 func (service *Service) StoreTLSFile(folder string, fileType portainer.TLSFileType, r io.Reader) error {
 	storePath := path.Join(TLSStorePath, folder)
-	err := service.createDirectoryInStoreIfNotExist(storePath)
+	err := service.createDirectoryInStore(storePath)
 	if err != nil {
 		return err
 	}
@@ -201,24 +204,73 @@ func (service *Service) GetFileContent(filePath string) (string, error) {
 	return string(content), nil
 }
 
-// createDirectoryInStoreIfNotExist creates a new directory in the file store if it doesn't exists on the file system.
-func (service *Service) createDirectoryInStoreIfNotExist(name string) error {
-	path := path.Join(service.fileStorePath, name)
-	return createDirectoryIfNotExist(path, 0700)
-}
-
-// createDirectoryIfNotExist creates a directory if it doesn't exists on the file system.
-func createDirectoryIfNotExist(path string, mode uint32) error {
-	_, err := os.Stat(path)
-	if os.IsNotExist(err) {
-		err = os.Mkdir(path, os.FileMode(mode))
-		if err != nil {
-			return err
-		}
-	} else if err != nil {
+// WriteJSONToFile writes JSON to the specified file.
+func (service *Service) WriteJSONToFile(path string, content interface{}) error {
+	jsonContent, err := json.Marshal(content)
+	if err != nil {
 		return err
 	}
+
+	return ioutil.WriteFile(path, jsonContent, 0644)
+}
+
+// KeyPairFilesExist checks for the existence of the key files.
+func (service *Service) KeyPairFilesExist() (bool, error) {
+	privateKeyPath := path.Join(service.dataStorePath, PrivateKeyFile)
+	exists, err := fileExists(privateKeyPath)
+	if err != nil {
+		return false, err
+	}
+	if !exists {
+		return false, nil
+	}
+
+	publicKeyPath := path.Join(service.dataStorePath, PublicKeyFile)
+	exists, err = fileExists(publicKeyPath)
+	if err != nil {
+		return false, err
+	}
+	if !exists {
+		return false, nil
+	}
+
+	return true, nil
+}
+
+// StoreKeyPair store the specified keys content as PEM files on disk.
+func (service *Service) StoreKeyPair(private, public []byte, privatePEMHeader, publicPEMHeader string) error {
+	err := service.createPEMFileInStore(private, privatePEMHeader, PrivateKeyFile)
+	if err != nil {
+		return err
+	}
+
+	err = service.createPEMFileInStore(public, publicPEMHeader, PublicKeyFile)
+	if err != nil {
+		return err
+	}
+
 	return nil
+}
+
+// LoadKeyPair retrieve the content of both key files on disk.
+func (service *Service) LoadKeyPair() ([]byte, []byte, error) {
+	privateKey, err := service.getContentFromPEMFile(PrivateKeyFile)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	publicKey, err := service.getContentFromPEMFile(PublicKeyFile)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return privateKey, publicKey, nil
+}
+
+// createDirectoryInStore creates a new directory in the file store
+func (service *Service) createDirectoryInStore(name string) error {
+	path := path.Join(service.fileStorePath, name)
+	return os.MkdirAll(path, 0700)
 }
 
 // createFile creates a new file in the file store with the content from r.
@@ -237,4 +289,44 @@ func (service *Service) createFileInStore(filePath string, r io.Reader) error {
 	}
 
 	return nil
+}
+
+func (service *Service) createPEMFileInStore(content []byte, fileType, filePath string) error {
+	path := path.Join(service.fileStorePath, filePath)
+	block := &pem.Block{Type: fileType, Bytes: content}
+
+	out, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600)
+	if err != nil {
+		return err
+	}
+	defer out.Close()
+
+	err = pem.Encode(out, block)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (service *Service) getContentFromPEMFile(filePath string) ([]byte, error) {
+	path := path.Join(service.fileStorePath, filePath)
+
+	fileContent, err := ioutil.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+
+	block, _ := pem.Decode(fileContent)
+	return block.Bytes, nil
+}
+
+func fileExists(filePath string) (bool, error) {
+	if _, err := os.Stat(filePath); err != nil {
+		if os.IsNotExist(err) {
+			return false, nil
+		}
+		return false, err
+	}
+	return true, nil
 }

@@ -1,16 +1,17 @@
 angular.module('portainer.docker')
-.controller('ContainerLogsController', ['$scope', '$transition$', '$interval', 'ContainerService', 'Notifications',
-function ($scope, $transition$, $interval, ContainerService, Notifications) {
+.controller('ContainerLogsController', ['$scope', '$transition$', '$interval', 'ContainerService', 'Notifications', 'HttpRequestHelper',
+function ($scope, $transition$, $interval, ContainerService, Notifications, HttpRequestHelper) {
   $scope.state = {
     refreshRate: 3,
-    lineCount: 2000
+    lineCount: 2000,
+    displayTimestamps: false
   };
 
   $scope.changeLogCollection = function(logCollectionStatus) {
     if (!logCollectionStatus) {
       stopRepeater();
     } else {
-      setUpdateRepeater();
+      setUpdateRepeater(!$scope.container.Config.Tty);
     }
   };
 
@@ -30,10 +31,10 @@ function ($scope, $transition$, $interval, ContainerService, Notifications) {
     $scope.logs = logs;
   }
 
-  function setUpdateRepeater() {
+  function setUpdateRepeater(skipHeaders) {
     var refreshRate = $scope.state.refreshRate;
     $scope.repeater = $interval(function() {
-      ContainerService.logs($transition$.params().id, 1, 1, 0, $scope.state.lineCount)
+      ContainerService.logs($transition$.params().id, 1, 1, $scope.state.displayTimestamps ? 1 : 0, $scope.state.lineCount, skipHeaders)
       .then(function success(data) {
         $scope.logs = data;
       })
@@ -44,11 +45,11 @@ function ($scope, $transition$, $interval, ContainerService, Notifications) {
     }, refreshRate * 1000);
   }
 
-  function startLogPolling() {
-    ContainerService.logs($transition$.params().id, 1, 1, 0, $scope.state.lineCount)
+  function startLogPolling(skipHeaders) {
+    ContainerService.logs($transition$.params().id, 1, 1, $scope.state.displayTimestamps ? 1 : 0, $scope.state.lineCount, skipHeaders)
     .then(function success(data) {
       $scope.logs = data;
-      setUpdateRepeater();
+      setUpdateRepeater(skipHeaders);
     })
     .catch(function error(err) {
       stopRepeater();
@@ -57,10 +58,12 @@ function ($scope, $transition$, $interval, ContainerService, Notifications) {
   }
 
   function initView() {
+    HttpRequestHelper.setPortainerAgentTargetHeader($transition$.params().nodeName);
     ContainerService.container($transition$.params().id)
     .then(function success(data) {
-      $scope.container = data;
-      startLogPolling();
+      var container = data;
+      $scope.container = container;
+      startLogPolling(!container.Config.Tty);
     })
     .catch(function error(err) {
       Notifications.error('Failure', err, 'Unable to retrieve container information');

@@ -1,7 +1,7 @@
 <rd-header>
   <rd-header-title title="Network list">
     <a data-toggle="tooltip" title="Refresh" ui-sref="docker.networks" ui-sref-opts="{reload: true}">
-      <i class="fa fa-refresh" aria-hidden="true"></i>
+      <i class="fa fa-sync" aria-hidden="true"></i>
     </a>
   </rd-header-title>
   <rd-header-content>Networks</rd-header-content>
@@ -15,6 +15,7 @@
     order-by="Name" show-text-filter="true"
     remove-action="removeAction"
     show-ownership-column="applicationState.application.authentication"
+    show-host-column="applicationState.endpoint.mode.agentProxy"
     ></networks-datatable>
   </div>
 </div>

@@ -1,13 +1,13 @@
 angular.module('portainer.docker')
-.controller('ImageController', ['$q', '$scope', '$transition$', '$state', '$timeout', 'ImageService', 'RegistryService', 'Notifications',
-function ($q, $scope, $transition$, $state, $timeout, ImageService, RegistryService, Notifications) {
+.controller('ImageController', ['$q', '$scope', '$transition$', '$state', '$timeout', 'ImageService', 'RegistryService', 'Notifications', 'HttpRequestHelper',
+function ($q, $scope, $transition$, $state, $timeout, ImageService, RegistryService, Notifications, HttpRequestHelper) {
 	$scope.formValues = {
 		Image: '',
 		Registry: ''
 	};
 
-	$scope.sortType = 'Size';
-  $scope.sortReverse = true;
+	$scope.sortType = 'Order';
+	$scope.sortReverse = false;
 
 	$scope.order = function(sortType) {
     $scope.sortReverse = ($scope.sortType === sortType) ? !$scope.sortReverse : false;
@@ -98,6 +98,7 @@ function ($q, $scope, $transition$, $state, $timeout, ImageService, RegistryServ
 	};
 
 	function initView() {
+		HttpRequestHelper.setPortainerAgentTargetHeader($transition$.params().nodeName);
 		var endpointProvider = $scope.applicationState.endpoint.mode.provider;
 		$q.all({
 			image: ImageService.image($transition$.params().id),

@@ -194,6 +194,16 @@
                 </div>
               </div>
               <!-- !url -->
+              <div ng-if="applicationState.endpoint.mode.agentProxy">
+                <div class="col-sm-12 form-section-title">
+                  Deployment
+                </div>
+                <!-- node-selection -->
+                <node-selector
+                  model="formValues.NodeName">
+                </node-selector>
+                <!-- !node-selection -->
+              </div>
               <!-- actions -->
               <div class="col-sm-12 form-section-title">
                 Actions
@@ -217,7 +227,7 @@
           </uib-tab>
           <uib-tab index="1" disable="!buildLogs">
             <uib-tab-heading>
-              <i class="fa fa-file-text space-right" aria-hidden="true"></i> Output
+              <i class="fa fa-file-alt space-right" aria-hidden="true"></i> Output
             </uib-tab-heading>
             <pre class="log_viewer">
               <div ng-repeat="line in buildLogs track by $index" class="line"><p class="inner_line" ng-click="active=!active" ng-class="{'line_selected': active}">{{ line }}</p></div>

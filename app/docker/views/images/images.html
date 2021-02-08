@@ -1,7 +1,7 @@
 <rd-header>
   <rd-header-title title="Image list">
     <a data-toggle="tooltip" title="Refresh" ui-sref="docker.images" ui-sref-opts="{reload: true}">
-      <i class="fa fa-refresh" aria-hidden="true"></i>
+      <i class="fa fa-sync" aria-hidden="true"></i>
     </a>
   </rd-header-title>
   <rd-header-content>Images</rd-header-content>
@@ -26,6 +26,16 @@
             </div>
           </div>
           <!-- !tag-note -->
+          <div ng-if="applicationState.endpoint.mode.agentProxy">
+            <div class="col-sm-12 form-section-title">
+              Deployment
+            </div>
+            <!-- node-selection -->
+            <node-selector
+              model="formValues.NodeName">
+            </node-selector>
+            <!-- !node-selection -->
+          </div>
           <div class="form-group">
             <div class="col-sm-12">
               <button type="button" class="btn btn-primary btn-sm" ng-disabled="state.actionInProgress || !formValues.Image" ng-click="pullImage()" button-spinner="state.actionInProgress">
@@ -46,6 +56,7 @@
     title="Images" title-icon="fa-clone"
     dataset="images" table-key="images"
     order-by="RepoTags" show-text-filter="true"
+    show-host-column="applicationState.endpoint.mode.agentProxy"
     remove-action="removeAction"
     force-remove-action="confirmRemovalAction"
     ></images-datatable>
